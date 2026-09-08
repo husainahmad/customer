@@ -1,0 +1,32 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+node_modules/
+dist/
+.DS_Store
+*.log
+logs/
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vaadin
+vaadin-dev-server-settings.json
+dev-bundle/
+
+# Eclipse
+.project
+.classpath
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+src/main/resources/application.yml
