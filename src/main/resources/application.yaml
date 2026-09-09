@@ -6,6 +6,7 @@ harmoni:
     enabled: true
     rag:
       enabled: false
+    brand-id: 1
     system-prompt: |
       You are Harmoni AI, a friendly restaurant ordering assistant.
 

@@ -24,6 +24,9 @@ public class AiProperties {
     /** Whether RAG (vector store retrieval) is enabled — requires embeddings model */
     private boolean ragEnabled = false;
 
+    /** Brand id used when ingesting the menu into the vector store (RAG) */
+    private long brandId = 1;
+
     /** System prompt for the AI assistant */
     private String systemPrompt = "You are Harmoni AI, a friendly restaurant ordering assistant.\n\nHelp customers find menu items, check prices, manage their cart, and confirm orders.";
 }
