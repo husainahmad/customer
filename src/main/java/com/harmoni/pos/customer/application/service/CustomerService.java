@@ -20,7 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * Implements the customer CRUD and search use cases (create, get, search, update, delete).
+ * Implements the customer use cases: create, get, search, update and delete.
+ * <p>
+ * Phone uniqueness is enforced before save/update ({@link DuplicateCustomerException}), and missing
+ * customers surface as {@link CustomerNotFoundException}. Search is paginated (default 20, capped at
+ * 100 per page) and query terms are trimmed — a blank keyword matches all customers.
  */
 @Service
 @RequiredArgsConstructor

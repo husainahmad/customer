@@ -29,7 +29,13 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Implements the session lifecycle and chat-history use cases - opening/closing sessions, adding and reading messages.
+ * Implements the session lifecycle and chat-history use cases: open a session, fetch it, close it,
+ * add a message, and read paginated message history.
+ * <p>
+ * Sessions carry a Base64URL token (32 random bytes, collisions retried) and validate the customer
+ * when a {@code customerId} is supplied. Messages cannot be added to a closed session
+ * ({@link InvalidCustomerMessageException}); session reads and message listing run in read-only
+ * transactions.
  */
 @Slf4j
 @Service

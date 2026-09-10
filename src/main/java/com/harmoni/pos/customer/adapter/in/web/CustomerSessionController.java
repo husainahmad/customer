@@ -12,7 +12,6 @@ import com.harmoni.pos.customer.application.port.in.CreateCustomerSessionCommand
 import com.harmoni.pos.customer.application.port.in.CreateCustomerSessionUseCase;
 import com.harmoni.pos.customer.application.port.in.GetCustomerMessagesUseCase;
 import com.harmoni.pos.customer.application.port.in.GetCustomerSessionUseCase;
-import com.harmoni.pos.customer.domain.exception.InvalidCustomerSessionException;
 import com.harmoni.pos.customer.domain.model.CustomerMessage;
 import com.harmoni.pos.customer.domain.model.CustomerMessageRole;
 import com.harmoni.pos.customer.domain.model.CustomerSession;
@@ -56,7 +55,7 @@ public class CustomerSessionController {
     public ResponseEntity<CustomerSessionResponse> create(
             @Valid @RequestBody CreateCustomerSessionRequest request) {
         CustomerSession session = createCustomerSessionUseCase.create(new CreateCustomerSessionCommand(
-                request.customerId(), parseSource(request.source())));
+                request.customerId(), CustomerSessionSource.from(request.source())));
         return ResponseEntity
                 .created(URI.create("/api/v1/customer-sessions/" + session.getId()))
                 .body(CustomerSessionResponse.from(session));
@@ -94,14 +93,6 @@ public class CustomerSessionController {
             @Parameter(description = "Page size") @RequestParam(defaultValue = "50") int size) {
         return PageResponse.of(getCustomerMessagesUseCase.getMessages(sessionId, page, size),
                 CustomerMessageResponse::from);
-    }
-
-    private static CustomerSessionSource parseSource(String raw) {
-        try {
-            return CustomerSessionSource.valueOf(raw.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new InvalidCustomerSessionException("Unknown session source: " + raw);
-        }
     }
 
     private static CustomerMessageRole parseRole(String raw) {

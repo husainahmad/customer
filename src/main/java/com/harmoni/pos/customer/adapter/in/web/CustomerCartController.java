@@ -2,6 +2,7 @@ package com.harmoni.pos.customer.adapter.in.web;
 
 import com.harmoni.pos.customer.cart.CustomerCartService;
 import com.harmoni.pos.customer.cart.dto.AddCartItemRequest;
+import com.harmoni.pos.customer.cart.dto.CartItemResponse;
 import com.harmoni.pos.customer.cart.dto.CartResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -9,6 +10,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * Shopping cart — lives entirely in customer:8084.
@@ -72,7 +75,7 @@ public class CustomerCartController {
      */
     @Operation(summary = "List offline menu", description = "Fallback static menu — handy when the Menu Service is offline. Verifies the session is still open first.")
     @GetMapping("/menu")
-    public java.util.List<com.harmoni.pos.customer.cart.dto.CartItemResponse> menu(
+    public List<CartItemResponse> menu(
             @Parameter(description = "Customer session id") @PathVariable long sessionId) {
         cartService.getCart(sessionId);
         return cartService.menu();

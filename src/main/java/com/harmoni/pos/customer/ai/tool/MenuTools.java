@@ -6,6 +6,7 @@ import com.harmoni.pos.customer.ai.tool.dto.CategoryToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.ProductSearchToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.ProductToolResponse;
 import com.harmoni.pos.customer.config.MenuServiceProperties;
+import com.harmoni.pos.customer.domain.exception.MenuServiceUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -194,6 +195,8 @@ public class MenuTools {
     /**
      * Raw JSON for the frontend category chips — not an LLM tool.
      * Used by the REST layer so Swagger shows proper JSON instead of the LLM-friendly text format.
+     *
+     * @throws MenuServiceUnavailableException when the Menu Service cannot be reached
      */
     public String getCategoriesByBrandRaw(Integer brandId) {
         int bid = brandId == null ? 1 : brandId;
@@ -203,7 +206,7 @@ public class MenuTools {
                     .retrieve().body(String.class);
         } catch (Exception e) {
             log.warn("getCategoriesByBrandRaw failed brandId={}: {}", bid, e.getMessage());
-            return "{\"httpStatus\":200,\"data\":[]}";
+            throw new MenuServiceUnavailableException("unable to fetch categories for brand " + bid, e);
         }
     }
 

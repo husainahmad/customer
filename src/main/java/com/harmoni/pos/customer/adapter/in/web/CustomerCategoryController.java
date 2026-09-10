@@ -23,11 +23,7 @@ public class CustomerCategoryController {
     @Operation(summary = "List categories", description = "Returns the categories for the default brand as raw JSON — ideal for rendering tappable chips on the frontend.")
     @GetMapping
     public String listCategories(@Parameter(description = "Customer session id — used to verify the session is still open", example = "42") @PathVariable long sessionId) {
-        try {
-            return menuTools.getCategoriesByBrandRaw(1);
-        } catch (Exception e) {
-            return menuTools.getCategoriesByBrand(1);
-        }
+        return menuTools.getCategoriesByBrandRaw(1);
     }
 
     @Operation(summary = "Search categories", description = "Find categories by name, e.g. 'Coffee' or 'Snack'. Uses the Menu Service under the hood.")

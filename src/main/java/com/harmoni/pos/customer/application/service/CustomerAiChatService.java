@@ -30,7 +30,15 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Implements the ChatWithAiUseCase: persists the USER message, calls Ollama through Spring AI ChatClient (tools, RAG-on-demand, rate-limit retry), cleans leaked tool JSON, persists the ASSISTANT reply and exposes blocking and streaming variants.
+ * Implements {@link ChatWithAiUseCase}: validates the session, persists the USER message, calls the
+ * configured AI provider via the Spring AI {@link ChatClient} (OpenAI-compatible, so groq / Ollama /
+ * gemini profiles all work), persists the ASSISTANT reply, and exposes blocking, sync, and streaming
+ * variants.
+ * <p>
+ * Tool calling is wired through {@link MenuTools}, {@link CartTools} and {@link OrderTools}; RAG
+ * retrieval is optional ({@code harmoni.ai.rag-enabled}, off by default — tools are the source of
+ * truth). Models that emit raw tool JSON as text instead of using tool binding are intercepted and
+ * executed directly so the persisted reply never leaks JSON.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,6 +59,11 @@ public class CustomerAiChatService implements ChatWithAiUseCase {
     private static final Pattern CATEGORY_ID_PATTERN = Pattern.compile("\"categoryId\"\\s*:\\s*(\\d+)");
     private static final Pattern SEARCH_NAME_PATTERN = Pattern.compile("\"(productName|categoryName|keyword)\"\\s*:\\s*\"([^\"]+)\"");
 
+    /**
+     * Blocking chat: validates the session, persists the USER message, calls the AI provider with
+     * rate-limit retry, executes leaked tool JSON, then persists and returns the ASSISTANT reply.
+     * The LLM connection originates from this service (not from the server that calls us).
+     */
     @Override
     @Transactional
     public CustomerMessage chat(long sessionId, String userMessage) {
@@ -119,11 +132,18 @@ if (aiProps.isRagEnabled()) {
         return assistantMsg;
     }
 
+    /**
+     * Convenience wrapper: runs {@link #chat(long, String)} and returns only the assistant text.
+     */
     @Override
     public String chatSync(long sessionId, String userMessage) {
         return chat(sessionId, userMessage).getMessage();
     }
 
+    /**
+     * Streaming variant of {@link #chat(long, String)}: persists the USER message, then emits the
+     * cleaned assistant text as a single chunk (rate-limit retries handled in-band).
+     */
     @Override
     public Flux<String> chatStream(long sessionId, String userMessage) {
         var session = sessionRepository.findById(sessionId)

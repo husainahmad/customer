@@ -5,6 +5,7 @@ import com.harmoni.pos.customer.domain.exception.CustomerSessionNotFoundExceptio
 import com.harmoni.pos.customer.domain.exception.DuplicateCustomerException;
 import com.harmoni.pos.customer.domain.exception.InvalidCustomerMessageException;
 import com.harmoni.pos.customer.domain.exception.InvalidCustomerSessionException;
+import com.harmoni.pos.customer.domain.exception.MenuServiceUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -62,6 +63,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+    }
+
+    @ExceptionHandler(MenuServiceUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleMenuServiceUnavailable(MenuServiceUnavailableException e) {
+        log.warn("Menu service unavailable: {}", e.getMessage());
+        return build(HttpStatus.SERVICE_UNAVAILABLE, "MENU_SERVICE_UNAVAILABLE", e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)

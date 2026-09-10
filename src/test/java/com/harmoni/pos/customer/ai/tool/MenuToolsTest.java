@@ -3,6 +3,7 @@ package com.harmoni.pos.customer.ai.tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.harmoni.pos.customer.config.MenuServiceProperties;
+import com.harmoni.pos.customer.domain.exception.MenuServiceUnavailableException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -77,6 +79,28 @@ class MenuToolsTest {
 
         assertThat(result).contains("PRODUCT_NOT_FOUND");
         assertThat(result).doesNotContain("products");
+    }
+
+    // ---------------------------------------------------------------
+    // Raw categories (frontend chip endpoint)
+    // ---------------------------------------------------------------
+
+    @Test
+    void categoriesRaw_success_returnsRawPayload() {
+        stubCategoryByBrand("{\"httpStatus\":200,\"data\":[{\"id\":13,\"name\":\"Coffee\"}]}");
+
+        String result = menuTools.getCategoriesByBrandRaw(1);
+
+        assertThat(result).isEqualTo("{\"httpStatus\":200,\"data\":[{\"id\":13,\"name\":\"Coffee\"}]}");
+    }
+
+    @Test
+    void categoriesRaw_menuDown_throwsDomainException() {
+        when(menuRestClient.get()).thenThrow(new RuntimeException("offline"));
+
+        assertThatThrownBy(() -> menuTools.getCategoriesByBrandRaw(1))
+                .isInstanceOf(MenuServiceUnavailableException.class)
+                .hasMessageContaining("unable to fetch categories for brand 1");
     }
 
     @Test

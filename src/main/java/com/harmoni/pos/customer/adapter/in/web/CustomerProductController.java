@@ -28,7 +28,7 @@ public class CustomerProductController {
             @Parameter(description = "Category id from the Menu Service", example = "13") @PathVariable Integer categoryId) {
         String result = menuTools.getProductsByCategory(categoryId);
         // Translate LLM-friendly sentinels to clean JSON for the REST frontend
-        if (result != null && ToolConstants.isSentinel(result)) {
+        if (ToolConstants.isSentinel(result)) {
             return "{\"data\":[]}";
         }
         return result;
@@ -40,7 +40,7 @@ public class CustomerProductController {
             @Parameter(description = "Customer session id") @PathVariable long sessionId,
             @Parameter(description = "Product name to search for", example = "caramel macchiato") @RequestParam String productName) {
         String result = menuTools.searchProductsByName(productName);
-        if (result != null && ToolConstants.isSentinel(result)) {
+        if (ToolConstants.isSentinel(result)) {
             return "{\"data\":[]}";
         }
         return result;
