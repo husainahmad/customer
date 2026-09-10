@@ -12,6 +12,7 @@ import com.harmoni.pos.customer.domain.model.CustomerMessageRole;
 import com.harmoni.pos.customer.ai.tool.CartTools;
 import com.harmoni.pos.customer.ai.tool.MenuTools;
 import com.harmoni.pos.customer.ai.tool.OrderTools;
+import com.harmoni.pos.customer.ai.tool.ToolConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -333,7 +334,7 @@ private String cleanAssistantText(String text) {
                     : cleanAssistantText(raw.replace(json, "").trim());
         }
         if (json.contains("getCategoriesByBrand")) {
-            return menuTools.getCategoriesByBrand(1);
+            return menuTools.getCategoriesByBrand(ToolConstants.DEFAULT_BRAND_ID);
         }
         if (json.contains("addToOrder")) {
             log.warn("Leaked addToOrder ignored sessionId={}", sessionId);

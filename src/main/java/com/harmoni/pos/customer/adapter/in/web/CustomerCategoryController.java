@@ -1,6 +1,7 @@
 package com.harmoni.pos.customer.adapter.in.web;
 
 import com.harmoni.pos.customer.ai.tool.MenuTools;
+import com.harmoni.pos.customer.ai.tool.ToolConstants;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,7 +24,7 @@ public class CustomerCategoryController {
     @Operation(summary = "List categories", description = "Returns the categories for the default brand as raw JSON — ideal for rendering tappable chips on the frontend.")
     @GetMapping
     public String listCategories(@Parameter(description = "Customer session id — used to verify the session is still open", example = "42") @PathVariable long sessionId) {
-        return menuTools.getCategoriesByBrandRaw(1);
+        return menuTools.getCategoriesByBrandRaw(ToolConstants.DEFAULT_BRAND_ID);
     }
 
     @Operation(summary = "Search categories", description = "Find categories by name, e.g. 'Coffee' or 'Snack'. Uses the Menu Service under the hood.")

@@ -15,6 +15,7 @@ public final class ToolConstants {
     public static final String HEADER_X_USERNAME = "X-Username";
     public static final String DEFAULT_USERNAME = "Kasir1";
     public static final String DEFAULT_CUSTOMER_NAME = "AI Customer";
+    public static final int DEFAULT_BRAND_ID = 1;
 
     // --- Sentinel prefixes (tool result format) ---
     public static final String PREFIX_PRODUCT_NOT_FOUND = "PRODUCT_NOT_FOUND: ";

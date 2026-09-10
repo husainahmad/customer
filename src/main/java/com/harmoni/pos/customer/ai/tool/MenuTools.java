@@ -199,7 +199,7 @@ public class MenuTools {
      * @throws MenuServiceUnavailableException when the Menu Service cannot be reached
      */
     public String getCategoriesByBrandRaw(Integer brandId) {
-        int bid = brandId == null ? 1 : brandId;
+        int bid = brandId == null ? ToolConstants.DEFAULT_BRAND_ID : brandId;
         String endpoint = menuProps.getEndpoints().getCategoryByBrand();
         try {
             return menuRestClient.get().uri(endpoint, bid)
@@ -224,12 +224,12 @@ public class MenuTools {
             This is the primary tool for showing the menu. Do not use searchProductsByName for this.
             """)
     public String getCategoriesByBrand() {
-        return getCategoriesByBrand(1);
+        return getCategoriesByBrand(ToolConstants.DEFAULT_BRAND_ID);
     }
 
     // Direct Java call helper — not a tool, so the LLM schema stays clean.
     public String getCategoriesByBrand(Integer brandId) {
-        int bid = brandId == null ? 1 : brandId;
+        int bid = brandId == null ? ToolConstants.DEFAULT_BRAND_ID : brandId;
         String endpoint = menuProps.getEndpoints().getCategoryByBrand();
         try {
             String json = menuRestClient.get()
@@ -276,7 +276,7 @@ public class MenuTools {
                 String first = menuRestClient.get()
                         .uri(uri -> uri.path(pagedEndpoint)
                                 .queryParam("page", 1).queryParam("size", 100).queryParam("search", "")
-                                .build(categoryId, 1))
+                                .build(categoryId, ToolConstants.DEFAULT_BRAND_ID))
                         .retrieve().body(String.class);
                 if (first == null) return toJson(ProductSearchToolResponse.notFound("no products for categoryId=" + categoryId));
                 return formatProductsJson(first, "categoryId=" + categoryId);
