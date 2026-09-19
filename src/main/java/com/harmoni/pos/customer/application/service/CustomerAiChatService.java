@@ -288,10 +288,8 @@ if (aiProps.isRagEnabled()) {
             return "Maaf, permintaan sedang tinggi (batas pemakaian AI gratis tercapai). Silakan tunggu sebentar lalu coba lagi.\n\n"
                     + "Sementara itu kamu bisa ketik \"menu\" untuk melihat kategori tanpa AI, atau ulangi: \"" + (userMessage != null ? userMessage.substring(0, Math.min(40, userMessage.length())) : "") + "\"";
         }
-        String raw = e.getMessage() != null ? e.getMessage() : e.toString();
-        // Hide technical provider URL details
-        if (raw.length() > 200) raw = raw.substring(0, 200);
-        return "Maaf, AI sedang tidak tersedia: " + raw;
+        // Detail is logged server-side (log.error above); never leak provider/exception internals to the user.
+        return "Maaf, AI sedang tidak tersedia. Silakan coba lagi nanti.";
     }
 
 private String cleanAssistantText(String text) {

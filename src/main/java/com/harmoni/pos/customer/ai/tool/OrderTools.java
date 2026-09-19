@@ -2,10 +2,12 @@ package com.harmoni.pos.customer.ai.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.harmoni.pos.customer.application.port.out.CustomerRepository;
 import com.harmoni.pos.customer.application.port.out.CustomerSessionRepository;
 import com.harmoni.pos.customer.cart.CustomerCartService;
 import com.harmoni.pos.customer.config.MenuServiceProperties;
 import com.harmoni.pos.customer.config.OrderServiceProperties;
+import com.harmoni.pos.customer.domain.model.Customer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -43,6 +45,7 @@ public class OrderTools {
 
     private final CustomerCartService cartService;
     private final CustomerSessionRepository sessionRepository;
+    private final CustomerRepository customerRepository;
     private final MenuServiceProperties menuProps;
     private final OrderServiceProperties orderProps;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -56,7 +59,7 @@ public class OrderTools {
             """)
     public String confirmOrder(
             @ToolParam(description = "Customer session id") Long sessionId,
-            @ToolParam(description = "Customer name for the order, e.g. 'Budi' — defaults to 'AI Customer' if not provided") String username,
+            @ToolParam(description = "Customer name for the order, e.g. 'Budi' — if not provided, the registered customer name for the session is used") String username,
             @ToolParam(description = "Payment method chosen by the customer: tunai/cash, qris/qr, or kartu/card/debit") String paymentMethod,
             @ToolParam(description = "Optional special request/note for the order, e.g. 'es extra', 'tanpa gula' — omit when none") String note) {
         if (sessionId == null) return ToolConstants.orderError("sessionId is required");
@@ -70,7 +73,7 @@ public class OrderTools {
             var cart = cartService.getCart(sessionId);
             if (cart.items().isEmpty()) return ToolConstants.cartEmpty("cannot confirm empty cart");
 
-            String customerName = username != null && !username.isBlank() ? username : ToolConstants.DEFAULT_CUSTOMER_NAME;
+            String customerName = resolveCustomerName(session.getCustomerId(), username);
             var orderDetails = cart.items().stream().map(i -> {
                 Long skuId = i.skuId();
                 if (skuId == null) {
@@ -116,6 +119,26 @@ public class OrderTools {
             log.warn("confirmOrder failed sessionId={}: {}", sessionId, e.getMessage(), e);
             return ToolConstants.orderError("unable to create or pay the order");
         }
+    }
+
+    // Resolves the customer name stamped on the order: prefer the name the
+    // model heard from the customer, then the registered profile for the
+    // session's customer, then the generic fallback.
+    private String resolveCustomerName(Long customerId, String username) {
+        if (username != null && !username.isBlank()) {
+            return username;
+        }
+        if (customerId != null) {
+            try {
+                return customerRepository.findById(customerId)
+                        .map(Customer::getName)
+                        .filter(n -> n != null && !n.isBlank())
+                        .orElse(ToolConstants.DEFAULT_CUSTOMER_NAME);
+            } catch (Exception e) {
+                log.warn("resolveCustomerName failed customerId={}: {}", customerId, e.getMessage());
+            }
+        }
+        return ToolConstants.DEFAULT_CUSTOMER_NAME;
     }
 
     // Maps the customer-facing payment method onto the Order Service payment ids (same mapping the POS apps use).
