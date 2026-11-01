@@ -35,6 +35,9 @@ public class MenuServiceProperties {
         /** GET /api/v1/product/{id} */
         private String productById = "/api/v1/product/{id}";
 
+        /** GET /api/v1/product/{id}/customization — customization groups assigned to a product */
+        private String productCustomization = "/api/v1/product/{id}/customization";
+
         /** GET /api/v1/category/search?categoryName=... */
         private String categorySearch = "/api/v1/category/search";
 

@@ -2,6 +2,8 @@ package com.harmoni.pos.customer.ai.tool;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.harmoni.pos.customer.ai.tool.dto.CustomizationGroupToolResponse;
+import com.harmoni.pos.customer.ai.tool.dto.CustomizationOptionToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.ProductToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.SkuToolResponse;
 
@@ -90,16 +92,202 @@ public final class JsonNodeExtractor {
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * Whether the product payload carries customization groups.
+     * <p>
+     * Some Menu Service endpoints attach the groups to each product (the price-aware
+     * category listing), some do not (the name search). When they are absent this is
+     * {@code null} rather than {@code false}, so a caller knows it has to ask the
+     * Menu Service separately instead of assuming the product is plain.
+     *
+     * @return true when groups are attached and non-empty, null when not attached
+     */
+    public Boolean hasCustomizations() {
+        List<CustomizationGroupToolResponse> groups = customizations();
+        return groups == null ? null : !groups.isEmpty();
+    }
+
+    /**
+     * Extracts the customization groups attached to this product, if any.
+     * <p>
+     * Supports the product-shaped payload ({@code customizations[]} with
+     * {@code customizationOptions[]} and {@code minimumSelection}/{@code maximumSelection})
+     * and the dedicated product-customization payload ({@code customizationId},
+     * {@code options[]}, {@code minSelection}/{@code maxSelection}). Option prices are
+     * resolved from the cheapest live tier row, matching what the clients show before
+     * the order service re-prices the line.
+     *
+     * @return the groups, or {@code null} when the payload carries no customizations field
+     */
+    public List<CustomizationGroupToolResponse> customizations() {
+        JsonNode groupsNode = productNode.get("customizations");
+        if (groupsNode == null || groupsNode.isNull()) {
+            return null;
+        }
+        if (!groupsNode.isArray()) {
+            return List.of();
+        }
+        List<CustomizationGroupToolResponse> groups = new ArrayList<>();
+        for (JsonNode groupNode : groupsNode) {
+            CustomizationGroupToolResponse group = parseCustomizationGroup(groupNode);
+            if (group != null) {
+                groups.add(group);
+            }
+        }
+        return groups;
+    }
+
+    /**
+     * Parses this node as one customization group, for callers reading the dedicated
+     * {@code /product/{id}/customization} payload where each array element is a group.
+     *
+     * @return the group, or {@code null} when the node has no usable id
+     */
+    public CustomizationGroupToolResponse asCustomizationGroup() {
+        return parseCustomizationGroup(productNode);
+    }
+
+    /**
+     * Parses one customization group from either Menu Service payload shape.
+     *
+     * @param groupNode the group node
+     * @return the group, or {@code null} when it has no usable id
+     */
+    private static CustomizationGroupToolResponse parseCustomizationGroup(JsonNode groupNode) {
+        if (groupNode == null || !groupNode.isObject()) {
+            return null;
+        }
+        Long customizationId = firstLong(groupNode, "customizationId", "id");
+        if (customizationId == null) {
+            return null;
+        }
+        String name = firstText(groupNode, "name");
+        String selectionType = firstText(groupNode, "selectionType");
+        Boolean required = firstBoolean(groupNode, "required");
+        Boolean allowQuantity = firstBoolean(groupNode, "allowQuantity");
+        Integer minSelection = firstInt(groupNode, "minSelection", "minimumSelection");
+        Integer maxSelection = firstInt(groupNode, "maxSelection", "maximumSelection");
+
+        JsonNode optionsNode = groupNode.has("options") ? groupNode.get("options")
+                : groupNode.has("customizationOptions") ? groupNode.get("customizationOptions") : null;
+        List<CustomizationOptionToolResponse> options = new ArrayList<>();
+        if (optionsNode != null && optionsNode.isArray()) {
+            for (JsonNode optionNode : optionsNode) {
+                CustomizationOptionToolResponse option = parseCustomizationOption(optionNode);
+                if (option != null) {
+                    options.add(option);
+                }
+            }
+        }
+        return new CustomizationGroupToolResponse(customizationId, name, selectionType,
+                required, allowQuantity, minSelection, maxSelection, options);
+    }
+
+    /**
+     * Parses one customization option, resolving its per-unit surcharge.
+     *
+     * @param optionNode the option node
+     * @return the option, or {@code null} when it has no usable id
+     */
+    private static CustomizationOptionToolResponse parseCustomizationOption(JsonNode optionNode) {
+        if (optionNode == null || !optionNode.isObject()) {
+            return null;
+        }
+        Long optionId = firstLong(optionNode, "id", "customizationOptionId");
+        if (optionId == null) {
+            return null;
+        }
+        String name = firstText(optionNode, "name");
+        BigDecimal price = cheapestTierPrice(optionNode);
+        if (price == null && optionNode.has("price")) {
+            String raw = optionNode.path("price").asText(null);
+            if (isValidPrice(raw)) {
+                price = new BigDecimal(raw);
+            }
+        }
+        return new CustomizationOptionToolResponse(optionId, name,
+                price == null ? BigDecimal.ZERO : price);
+    }
+
+    /**
+     * Returns the cheapest positive price among the option's tier rows, matching the
+     * stand-in the iPad client uses before the order service re-prices the line.
+     *
+     * @param optionNode the option node
+     * @return the cheapest price, or {@code null} when no tier row carries one
+     */
+    private static BigDecimal cheapestTierPrice(JsonNode optionNode) {
+        JsonNode tiers = optionNode.has("tierPrices") ? optionNode.get("tierPrices")
+                : optionNode.has("skuTierPrices") ? optionNode.get("skuTierPrices") : null;
+        if (tiers == null || !tiers.isArray()) {
+            return null;
+        }
+        BigDecimal cheapest = null;
+        for (JsonNode tier : tiers) {
+            if (tier.path("deleted").asBoolean(false)) {
+                continue;
+            }
+            String raw = tier.path("price").asText(null);
+            if (!isValidPrice(raw)) {
+                continue;
+            }
+            BigDecimal candidate = new BigDecimal(raw);
+            if (cheapest == null || candidate.compareTo(cheapest) < 0) {
+                cheapest = candidate;
+            }
+        }
+        return cheapest;
+    }
+
+    private static Long firstLong(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && !value.isNull()) {
+                long parsed = value.asLong(0);
+                if (parsed != 0) {
+                    return parsed;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Integer firstInt(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && !value.isNull()) {
+                return value.asInt();
+            }
+        }
+        return null;
+    }
+
+    private static String firstText(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && !value.isNull()) {
+                String text = value.asText(null);
+                if (text != null && !text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Boolean firstBoolean(JsonNode node, String... names) {
+        for (String name : names) {
+            JsonNode value = node.get(name);
+            if (value != null && !value.isNull()) {
+                return value.asBoolean();
+            }
+        }
+        return null;
+    }
+
     /** Maps this node into a {@link ProductToolResponse} preserving id, price, and all SKUs. */
     public ProductToolResponse toProductToolResponse() {
-        return ProductToolResponse.of(
-                productId(),
-                skuId(),
-                name(),
-                description(),
-                price(),
-                skus()
-        );
+        return ProductToolResponse.of(this);
     }
 
     /**
@@ -142,7 +330,7 @@ public final class JsonNodeExtractor {
         return BigDecimal.ZERO;
     }
 
-    private boolean isValidPrice(String raw) {
+    private static boolean isValidPrice(String raw) {
         return raw != null && !raw.isBlank() && !raw.equals("0") && !raw.equals("0.0");
     }
 

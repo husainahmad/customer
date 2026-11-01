@@ -1,7 +1,7 @@
 package com.harmoni.pos.customer.ai.tool;
 
 import com.harmoni.pos.customer.application.port.out.CustomerSessionRepository;
-import com.harmoni.pos.customer.cart.CustomerCartService;
+import com.harmoni.pos.customer.application.port.out.CustomerRepository;import com.harmoni.pos.customer.cart.CustomerCartService;
 import com.harmoni.pos.customer.cart.dto.CartItemResponse;
 import com.harmoni.pos.customer.cart.dto.CartResponse;
 import com.harmoni.pos.customer.config.MenuServiceProperties;
@@ -47,6 +47,12 @@ class OrderToolsTest {
     @Mock
     private CustomerSessionRepository sessionRepository;
 
+    @Mock
+    private CustomerRepository customerRepository;
+
+    @Mock
+    private org.springframework.web.client.RestClient menuRestClient;
+
     private MockRestServiceServer orderServer;
     private OrderTools orderTools;
 
@@ -57,7 +63,7 @@ class OrderToolsTest {
         orderProps.getEndpoints().setCreateOrder("/api/v1/order");
         RestClient.Builder builder = RestClient.builder();
         orderServer = MockRestServiceServer.bindTo(builder).build();
-        orderTools = new OrderTools(builder.build(), RestClient.create(), cartService, sessionRepository, menuProps, orderProps);
+        orderTools = new OrderTools(builder.build(), RestClient.create(), cartService, sessionRepository, customerRepository, menuProps, orderProps);
     }
 
     private CartResponse cartWithItems() {

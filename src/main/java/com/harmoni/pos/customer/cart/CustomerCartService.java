@@ -6,6 +6,7 @@ import com.harmoni.pos.customer.ai.tool.ToolConstants;
 import com.harmoni.pos.customer.application.port.out.CustomerSessionRepository;
 import com.harmoni.pos.customer.cart.dto.CartItemResponse;
 import com.harmoni.pos.customer.cart.dto.CartResponse;
+import com.harmoni.pos.customer.cart.dto.CustomizationGroupSelection;
 import com.harmoni.pos.customer.config.MenuServiceProperties;
 import com.harmoni.pos.customer.domain.exception.CustomerSessionNotFoundException;
 import com.harmoni.pos.customer.domain.exception.InvalidCustomerMessageException;
@@ -16,9 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -39,11 +38,11 @@ public class CustomerCartService {
 
     // Fallback static menu for offline tests (mybatisTest without menu:8082) — not used in prod
     private static final List<CartItemResponse> STATIC_MENU = List.of(
-            new CartItemResponse(1L, 101L, "Coffee Latte", new BigDecimal("18000"), 0, BigDecimal.ZERO),
-            new CartItemResponse(2L, 102L, "Americano", new BigDecimal("12000"), 0, BigDecimal.ZERO),
-            new CartItemResponse(3L, 103L, "Cappuccino", new BigDecimal("16000"), 0, BigDecimal.ZERO),
-            new CartItemResponse(4L, 104L, "Espresso", new BigDecimal("10000"), 0, BigDecimal.ZERO),
-            new CartItemResponse(5L, 105L, "Mocha", new BigDecimal("20000"), 0, BigDecimal.ZERO)
+            new CartItemResponse(1L, 101L, "Coffee Latte", new BigDecimal("18000"), 0),
+            new CartItemResponse(2L, 102L, "Americano", new BigDecimal("12000"), 0),
+            new CartItemResponse(3L, 103L, "Cappuccino", new BigDecimal("16000"), 0),
+            new CartItemResponse(4L, 104L, "Espresso", new BigDecimal("10000"), 0),
+            new CartItemResponse(5L, 105L, "Mocha", new BigDecimal("20000"), 0)
     );
 
     private final Map<Long, List<CartItemResponse>> carts = new ConcurrentHashMap<>();
@@ -88,6 +87,10 @@ public class CustomerCartService {
      * @return the updated cart
      */
     public CartResponse addToCart(long sessionId, Long productId, Long skuId, int quantity) {
+        return addToCart(sessionId, productId, skuId, quantity, java.util.List.of());
+    }
+
+    public CartResponse addToCart(long sessionId, Long productId, Long skuId, int quantity, List<CustomizationGroupSelection> customizations) {
         requireOpenSession(sessionId);
         if (productId == null) throw new InvalidCustomerMessageException("productId required");
         CartItemResponse product = fetchProduct(productId, skuId)
@@ -102,20 +105,42 @@ public class CustomerCartService {
         Long resolvedSkuId = skuId != null ? skuId : product.skuId();
         if (resolvedSkuId == null) resolvedSkuId = productId;
 
+        List<CustomizationGroupSelection> customizationsToUse = customizations == null ? List.of() : customizations;
+        // The chosen options carry their own per-unit charge, so the line has to be priced
+        // as (SKU price + option surcharge) x quantity. Pricing on the SKU alone silently
+        // drops what the customer actually agreed to pay.
+        BigDecimal surcharge = resolveSurcharge(productId, customizationsToUse);
+
         List<CartItemResponse> items = new ArrayList<>(carts.getOrDefault(sessionId, new ArrayList<>()));
         int idx = -1;
-        // Match on (productId, skuId) so different variants stay separate lines.
+        // Match on (productId, skuId, chosen options) so different variants AND different
+        // customization answers stay separate lines. Matching on the product and SKU alone
+        // would merge a plain coffee into an extra-shot one and price both the same way.
+        String lineKey = lineKey(resolvedSkuId, customizationsToUse);
         for (int i = 0; i < items.size(); i++) {
             CartItemResponse it = items.get(i);
-            if (it.productId().equals(productId) && java.util.Objects.equals(it.skuId(), resolvedSkuId)) { idx = i; break; }
+            if (it.productId().equals(productId)
+                    && Objects.equals(it.skuId(), resolvedSkuId)
+                    && lineKey(resolvedSkuId, it.customizations()).equals(lineKey)) { idx = i; break; }
         }
         if (idx >= 0) {
             CartItemResponse existing = items.get(idx);
             int newQty = existing.quantity() + quantity;
+            // Keep whichever choices the line already carries; the surcharge must follow
+            // them, not the choices on this particular add, or the total drifts on re-add.
+            List<CustomizationGroupSelection> effectiveCustomizations =
+                    existing.customizations() == null || existing.customizations().isEmpty()
+                            ? customizationsToUse
+                            : existing.customizations();
+            BigDecimal effectiveSurcharge = effectiveCustomizations == customizationsToUse
+                    ? surcharge
+                    : resolveSurcharge(productId, effectiveCustomizations);
             if (newQty <= 0) items.remove(idx);
-            else items.set(idx, new CartItemResponse(productId, resolvedSkuId, product.name(), product.price(), newQty, product.price().multiply(BigDecimal.valueOf(newQty))));
+            else items.set(idx, CartItemResponse.priced(productId, resolvedSkuId, product.name(),
+                    product.price(), newQty, effectiveSurcharge, effectiveCustomizations));
         } else if (quantity > 0) {
-            items.add(new CartItemResponse(productId, resolvedSkuId, product.name(), product.price(), quantity, product.price().multiply(BigDecimal.valueOf(quantity))));
+            items.add(CartItemResponse.priced(productId, resolvedSkuId, product.name(),
+                    product.price(), quantity, surcharge, customizationsToUse));
         }
         carts.put(sessionId, items);
         log.info("Cart add sessionId={} productId={} skuId={} qty={} totalItems={}", sessionId, productId, resolvedSkuId, quantity, items.stream().mapToInt(CartItemResponse::quantity).sum());
@@ -157,7 +182,7 @@ public class CustomerCartService {
      */
     public List<CartItemResponse> menu() {
         return STATIC_MENU.stream()
-                .map(p -> new CartItemResponse(p.productId(), p.skuId(), p.name(), p.price(), 0, BigDecimal.ZERO))
+                .map(p -> new CartItemResponse(p.productId(), p.skuId(), p.name(), p.price(), 0, BigDecimal.ZERO, java.util.List.of()))
                 .toList();
     }
 
@@ -182,12 +207,214 @@ public class CustomerCartService {
     }
 
     /**
+     * Identity of a cart line: the SKU plus the options chosen on it, with each option
+     * repeated once per unit and sorted, so the same choices in a different order resolve
+     * to the same line.
+     *
+     * @param skuId          the SKU on the line
+     * @param customizations the choices on the line
+     * @return the line's identity
+     */
+    private static String lineKey(Long skuId, List<CustomizationGroupSelection> customizations) {
+        List<Long> optionIds = new ArrayList<>();
+        if (customizations != null) {
+            for (CustomizationGroupSelection group : customizations) {
+                if (group == null || group.options() == null) {
+                    continue;
+                }
+                for (var option : group.options()) {
+                    if (option == null || option.customizationOptionId() == null) {
+                        continue;
+                    }
+                    int units = option.quantity() == null ? 1 : Math.max(1, option.quantity());
+                    for (int unit = 0; unit < units; unit++) {
+                        optionIds.add(option.customizationOptionId());
+                    }
+                }
+            }
+        }
+        Collections.sort(optionIds);
+        return skuId + "|" + optionIds;
+    }
+
+    /**
+     * Sums the per-unit charge of the chosen customization options.
+     * <p>
+     * Each option is charged its price once per unit chosen, so two extra shots declared
+     * as one option with quantity 2 cost twice the option's price. The prices come from
+     * the Menu Service; an option that cannot be priced contributes nothing rather than
+     * failing the add, and the Order Service re-prices the line at confirmation anyway.
+     *
+     * @param customizations the groups and option selections on the line
+     * @return the total per-unit surcharge, never {@code null}
+     */
+    private BigDecimal resolveSurcharge(Long productId, List<CustomizationGroupSelection> customizations) {
+        if (customizations == null || customizations.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Map<Long, BigDecimal> prices = fetchOptionPrices(productId, customizations);
+        BigDecimal total = BigDecimal.ZERO;
+        for (CustomizationGroupSelection group : customizations) {
+            if (group == null || group.options() == null) {
+                continue;
+            }
+            for (var option : group.options()) {
+                if (option == null || option.customizationOptionId() == null) {
+                    continue;
+                }
+                BigDecimal price = prices.get(option.customizationOptionId());
+                if (price == null) {
+                    continue;
+                }
+                int units = option.quantity() == null ? 1 : Math.max(1, option.quantity());
+                total = total.add(price.multiply(BigDecimal.valueOf(units)));
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Reads the unit price of each chosen option from the Menu Service.
+     * <p>
+     * The product payload already carries {@code customizations[].options[].tierPrices},
+     * so one product read covers every option on the line. Options that are absent from
+     * the catalogue are left out, which makes them free rather than an error.
+     *
+     * @param customizations the selections to price
+     * @return the unit price per option id
+     */
+    private Map<Long, BigDecimal> fetchOptionPrices(Long productId, List<CustomizationGroupSelection> customizations) {
+        Set<Long> optionIds = new LinkedHashSet<>();
+        for (CustomizationGroupSelection group : customizations) {
+            if (group == null || group.options() == null) {
+                continue;
+            }
+            for (var option : group.options()) {
+                if (option != null && option.customizationOptionId() != null) {
+                    optionIds.add(option.customizationOptionId());
+                }
+            }
+        }
+        if (optionIds.isEmpty() || productId == null) {
+            return Map.of();
+        }
+        Map<Long, BigDecimal> prices = new HashMap<>();
+        try {
+            JsonNode product = fetchProductNode(productId);
+            if (product != null) {
+                collectOptionPrices(product, optionIds, prices);
+            }
+        } catch (Exception e) {
+            log.warn("resolveSurcharge failed to read option prices: {}", e.getMessage());
+        }
+        return prices;
+    }
+
+    /**
+     * Collects prices for the wanted options from one product payload.
+     *
+     * @param product   the Menu Service product node
+     * @param optionIds the option ids being priced
+     * @param prices    the map to fill
+     */
+    private void collectOptionPrices(JsonNode product, Set<Long> optionIds, Map<Long, BigDecimal> prices) {
+        JsonNode groups = product.get("customizations");
+        if (groups == null || !groups.isArray()) {
+            return;
+        }
+        for (JsonNode group : groups) {
+            JsonNode options = group.has("options") ? group.get("options")
+                    : group.has("customizationOptions") ? group.get("customizationOptions") : null;
+            if (options == null || !options.isArray()) {
+                continue;
+            }
+            for (JsonNode option : options) {
+                long optionId = option.path("id").asLong(0);
+                if (optionId == 0 || !optionIds.contains(optionId)) {
+                    continue;
+                }
+                BigDecimal price = cheapestOptionTierPrice(option);
+                if (price != null) {
+                    prices.put(optionId, price);
+                }
+            }
+        }
+    }
+
+    /**
+     * The cheapest live tier price of a customization option.
+     * <p>
+     * The cart has no operator, so the price tier cannot be matched here. The lowest
+     * live row stands in, exactly as the iPad client does, and the Order Service
+     * re-resolves the real amount when it prices the line.
+     *
+     * @param option the option node
+     * @return the price, or {@code null} when no tier row carries one
+     */
+    private BigDecimal cheapestOptionTierPrice(JsonNode option) {
+        JsonNode tiers = option.has("tierPrices") ? option.get("tierPrices")
+                : option.has("skuTierPrices") ? option.get("skuTierPrices") : null;
+        if (tiers != null && tiers.isArray()) {
+            BigDecimal cheapest = null;
+            for (JsonNode tier : tiers) {
+                if (tier.path("deleted").asBoolean(false)) {
+                    continue;
+                }
+                String raw = tier.path("price").asText(null);
+                if (raw == null || raw.isBlank()) {
+                    continue;
+                }
+                BigDecimal candidate = new BigDecimal(raw);
+                if (cheapest == null || candidate.compareTo(cheapest) < 0) {
+                    cheapest = candidate;
+                }
+            }
+            if (cheapest != null) {
+                return cheapest;
+            }
+        }
+        if (option.has("price")) {
+            String raw = option.path("price").asText(null);
+            if (raw != null && !raw.isBlank()) {
+                return new BigDecimal(raw);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Reads one product from the Menu Service as a JSON node.
+     *
+     * @param productId the product id
+     * @return the product node, or {@code null} when unavailable
+     */
+    private JsonNode fetchProductNode(Long productId) {
+        try {
+            String endpoint = menuProps.getEndpoints().getProductById();
+            String json = menuRestClient.get()
+                    .uri(endpoint, productId)
+                    .header(ToolConstants.HEADER_X_USERNAME, ToolConstants.DEFAULT_USERNAME)
+                    .retrieve().body(String.class);
+            if (json == null) return null;
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode data = root.has("data") ? root.get("data") : root;
+            if (data != null && data.isObject() && data.has("data") && data.get("data").isObject()) {
+                data = data.get("data");
+            }
+            return data != null && data.isObject() ? data : null;
+        } catch (Exception e) {
+            log.warn("fetchProductNode failed productId={}: {}", productId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Fetches a product from the Menu Service, resolving the first SKU's price.
      *
      * @param productId product id to fetch
      * @return the product as a cart item, or empty when not found/unreachable
      */
-    private java.util.Optional<CartItemResponse> fetchProduct(Long productId) {
+    private Optional<CartItemResponse> fetchProduct(Long productId) {
         return fetchProduct(productId, null);
     }
 
@@ -202,7 +429,7 @@ public class CustomerCartService {
      * @param preferredSkuId the SKU the customer/LLM selected, or null for the first SKU
      * @return the product as a cart item, or empty when not found/unreachable
      */
-    private java.util.Optional<CartItemResponse> fetchProduct(Long productId, Long preferredSkuId) {
+    private Optional<CartItemResponse> fetchProduct(Long productId, Long preferredSkuId) {
         try {
             // Uses configured endpoint — returns full skus with tierPrices. /product?ids returns empty tierPrices.
             String endpoint = menuProps.getEndpoints().getProductById();
@@ -213,13 +440,13 @@ public class CustomerCartService {
             if (json == null) return java.util.Optional.empty();
             JsonNode root = objectMapper.readTree(json);
             JsonNode data = root.has("data") ? root.get("data") : root;
-            if (data == null || data.isNull() || (data.isObject() && data.isEmpty())) return java.util.Optional.empty();
+            if (data == null || data.isNull() || (data.isObject() && data.isEmpty())) return Optional.empty();
             if (data.isObject() && data.has("data") && data.get("data").isObject()) data = data.get("data");
             // data is product object
             long id = data.path("id").asLong(0);
-            if (id == 0) return java.util.Optional.empty();
+            if (id == 0) return Optional.empty();
             String name = data.path("name").asText(null);
-            if (name == null || name.isBlank()) return java.util.Optional.empty();
+            if (name == null || name.isBlank()) return Optional.empty();
             JsonNode selectedSku = findSkuById(data, preferredSkuId);
             BigDecimal price = extractPrice(selectedSku != null ? selectedSku : data);
             Long skuId = selectedSku != null ? preferredSkuId : extractSkuId(data);
@@ -232,10 +459,10 @@ public class CustomerCartService {
                 log.warn("Menu product {} has no skuId, using productId as fallback", productId);
                 skuId = productId;
             }
-            return java.util.Optional.of(new CartItemResponse(id, skuId, name, price, 0, BigDecimal.ZERO));
+            return Optional.of(new CartItemResponse(id, skuId, name, price, 0, BigDecimal.ZERO));
         } catch (Exception e) {
             log.warn("fetchProduct failed productId={}: {}", productId, e.getMessage());
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 

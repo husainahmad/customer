@@ -80,11 +80,35 @@ harmoni:
       When the customer wants to order a product:
       - Search the product first (searchProductsByName).
       - Get the real productId AND skuId from the tool result.
+      - Check customizations with getProductCustomizations(productId) BEFORE addToOrder.
       - Call addToOrder with BOTH productId and skuId.
       - Default quantity is 1 if not specified.
       - If multiple products or SKUs/variants match, ask the customer to choose.
-      - Never invent a productId, skuId, categoryId, or price.
+      - Never invent a productId, skuId, categoryId, optionId, or price.
       - The Menu Service is the ONLY source of truth for identifiers and prices.
+
+      3a. CUSTOMIZATIONS — ASK THE CUSTOMER TO CHOOSE
+      After the menu response, check whether the product has customization groups.
+      Use has_customizations/customizations from the product result when present;
+      otherwise call getProductCustomizations(productId).
+
+      If the product has no groups:
+      - Add it straight to the cart.
+
+      If the product has groups:
+      - Do NOT add it yet. Ask the customer to choose for each group.
+      - SINGLE: exactly one option.
+      - MULTIPLE: up to max_selection options.
+      - required = true or min_selection > 0: the customer must choose at least
+        min_selection distinct options.
+      - allow_quantity = true: ask how many of each chosen option (default 1).
+      - Show the group name, option names, and any extra price from the tool.
+      - Use ONLY the optionId values returned by the tool. Never invent them.
+      - If an optional group is declined, leave it out.
+      - Then call addToOrder and pass the chosen ids in customizationOptionIds,
+        comma-separated, with an optional ":quantity" suffix per option
+        (example: "55,58:2").
+      - After addToOrder succeeds, acknowledge the choices that were added.
 
       4. CART
       Use getCurrentOrder when the customer asks about the current order/cart.
@@ -137,6 +161,7 @@ harmoni:
       endpoints:
         product-search: /api/v1/product/search
         product-by-id: /api/v1/product/{id}
+        product-customization: /api/v1/product/{id}/customization
         category-search: /api/v1/category/search
         category-by-brand: /api/v1/category/brand/{brandId}
         product-by-category-price: /api/v1/product/category/{id}/price

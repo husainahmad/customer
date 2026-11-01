@@ -56,8 +56,9 @@ public class CustomerAiChatService implements ChatWithAiUseCase {
     private final AiProperties aiProps;
     private final RetryProperties retryProps;
 
-    private static final Pattern TOOL_JSON_PATTERN = Pattern.compile("\\{\\s*\"name\"\\s*:\\s*\"(getProductsByCategory|searchProductsByName|searchMenu|searchCategoriesByName|getCategoriesByBrand|addToOrder|getCurrentOrder|removeOrderItem|confirmOrder)\"[^}]*\\}");
+    private static final Pattern TOOL_JSON_PATTERN = Pattern.compile("\\{\\s*\"name\"\\s*:\\s*\"(getProductsByCategory|searchProductsByName|searchMenu|searchCategoriesByName|getCategoriesByBrand|getProductCustomizations|addToOrder|getCurrentOrder|removeOrderItem|confirmOrder)\"[^}]*\\}");
     private static final Pattern CATEGORY_ID_PATTERN = Pattern.compile("\"categoryId\"\\s*:\\s*(\\d+)");
+    private static final Pattern PRODUCT_ID_PATTERN = Pattern.compile("\"productId\"\\s*:\\s*(\\d+)");
     private static final Pattern SEARCH_NAME_PATTERN = Pattern.compile("\"(productName|categoryName|keyword)\"\\s*:\\s*\"([^\"]+)\"");
 
     /**
@@ -333,6 +334,12 @@ private String cleanAssistantText(String text) {
         }
         if (json.contains("getCategoriesByBrand")) {
             return menuTools.getCategoriesByBrand(ToolConstants.DEFAULT_BRAND_ID);
+        }
+        if (json.contains("getProductCustomizations")) {
+            Matcher pm = PRODUCT_ID_PATTERN.matcher(json);
+            return pm.find()
+                    ? menuTools.getProductCustomizations(Long.parseLong(pm.group(1)))
+                    : cleanAssistantText(raw.replace(json, "").trim());
         }
         if (json.contains("addToOrder")) {
             log.warn("Leaked addToOrder ignored sessionId={}", sessionId);

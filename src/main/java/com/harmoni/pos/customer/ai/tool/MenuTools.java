@@ -1,8 +1,11 @@
 package com.harmoni.pos.customer.ai.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.harmoni.pos.customer.ai.tool.dto.CategorySearchToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.CategoryToolResponse;
+import com.harmoni.pos.customer.ai.tool.dto.CustomizationGroupToolResponse;
+import com.harmoni.pos.customer.ai.tool.dto.ProductCustomizationsToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.ProductSearchToolResponse;
 import com.harmoni.pos.customer.ai.tool.dto.ProductToolResponse;
 import com.harmoni.pos.customer.config.MenuServiceProperties;
@@ -15,6 +18,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -42,6 +46,14 @@ public class MenuTools {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * How many products in one tool result are checked for customizations. A name
+     * search can match many products; the check is a call per product, so it is
+     * bounded rather than run across an entire menu. The assistant can still check
+     * any individual product with {@code getProductCustomizations}.
+     */
+    private static final int MAX_CUSTOMIZATION_LOOKUPS = 20;
+
     // --- product search ---
 
     @Tool(description = """
@@ -58,6 +70,11 @@ public class MenuTools {
             - description: product description (if available)
             - price: price in IDR from the Menu Service
             - skus: list of available SKUs/variants with their own skuId and price
+            - has_customizations: true when the product has options the customer must choose
+            - customizations: the groups and options, when the Menu Service returned them
+
+            If has_customizations is true but customizations is missing, call
+            getProductCustomizations before adding the product to the cart.
 
             Good calls:
             - "harga caramel macchiato" -> searchProductsByName("caramel macchiato")
@@ -161,6 +178,108 @@ public class MenuTools {
         }
     }
 
+    // --- product customizations ---
+
+    @Tool(description = """
+            Check whether a product has customization options, and list them.
+
+            ALWAYS call this tool before adding a product to the cart when the customer
+            wants to order it. Calling it first is how the assistant knows whether it
+            must ask the customer to choose anything.
+
+            The response contains structured JSON with:
+            - productId: the product that was checked
+            - has_customizations: true when the product has groups to choose from
+            - customizations: one entry per group, with:
+                - customizationId: authoritative group id
+                - name: group name, e.g. "Size" or "Milk"
+                - selectionType: SINGLE (pick one) or MULTIPLE (pick several)
+                - required / min_selection / max_selection: how many options are needed
+                - allow_quantity: true when an option may be chosen more than once
+                - options: each with optionId, name and price (extra charge in IDR)
+
+            When has_customizations is true, DO NOT add the product yet: ask the customer
+            to choose, using only the optionId values returned here. Then call addToOrder
+            with customization_option_ids.
+            When it is false, the product can be added directly.
+            """)
+    public String getProductCustomizations(
+            @ToolParam(description = "Product id from the Menu Service — call searchProductsByName first") Long productId) {
+        if (productId == null) {
+            return toJson(ProductCustomizationsToolResponse.error(null, "productId is required"));
+        }
+        List<CustomizationGroupToolResponse> groups = getCustomizationGroups(productId);
+        if (groups == null) {
+            return toJson(ProductCustomizationsToolResponse.error(productId,
+                    "unable to read customizations for productId=" + productId));
+        }
+        return toJson(ProductCustomizationsToolResponse.success(productId, groups));
+    }
+
+    /**
+     * Reads the customization groups assigned to a product from the Menu Service.
+     * <p>
+     * This is the check the assistant relies on before adding a product: a product
+     * with no groups can be added straight away, while one with groups needs the
+     * customer's choices first.
+     *
+     * @param productId the product to check
+     * @return the groups (empty when the product has none), or {@code null} when the
+     *         Menu Service could not be read — the two are deliberately different so a
+     *         failed lookup never looks like "no customizations"
+     */
+    public List<CustomizationGroupToolResponse> getCustomizationGroups(Long productId) {
+        if (productId == null) {
+            return List.of();
+        }
+        String endpoint = menuProps.getEndpoints().getProductCustomization();
+        try {
+            String json = menuRestClient.get()
+                    .uri(endpoint, productId)
+                    .header(ToolConstants.HEADER_X_USERNAME, ToolConstants.DEFAULT_USERNAME)
+                    .retrieve().body(String.class);
+            return parseCustomizationGroupsJson(json);
+        } catch (Exception e) {
+            log.warn("getCustomizationGroups failed productId={}: {}", productId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Parses the dedicated product-customization payload into tool responses.
+     * Handles root-array, {@code data}, and nested {@code data.data} formats.
+     *
+     * @param json the raw Menu Service response
+     * @return the groups, empty when the payload carries none
+     */
+    private List<CustomizationGroupToolResponse> parseCustomizationGroupsJson(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode data = root.has("data") ? root.get("data") : root;
+            if (data != null && data.isObject() && data.has("data")) {
+                data = data.get("data");
+            }
+            if (data == null || !data.isArray() || data.isEmpty()) {
+                return List.of();
+            }
+            List<CustomizationGroupToolResponse> groups = new ArrayList<>();
+            for (JsonNode groupNode : data) {
+                CustomizationGroupToolResponse group =
+                        JsonNodeExtractor.from(groupNode, objectMapper).asCustomizationGroup();
+                if (group != null) {
+                    groups.add(group);
+                }
+            }
+            return groups;
+        } catch (Exception e) {
+            log.warn("parseCustomizationGroupsJson failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
     // --- categories ---
 
     @Tool(description = """
@@ -255,6 +374,9 @@ public class MenuTools {
             - description: product description (if available)
             - price: price in IDR from the Menu Service
             - skus: list of available SKUs/variants with their own skuId and price
+            - has_customizations: true when the product has options the customer must choose
+
+            Before adding any product to the cart, call getProductCustomizations for it.
             """)
     public String getProductsByCategory(
             @ToolParam(description = "Category id from the Menu Service, e.g. 13 for Coffee") Integer categoryId) {
@@ -324,9 +446,26 @@ public class MenuTools {
             List<JsonNodeExtractor> extractors = JsonNodeExtractor.extractAllProducts(json, objectMapper);
             if (extractors.isEmpty()) return toJson(ProductSearchToolResponse.notFound(context));
 
-            List<ProductToolResponse> products = extractors.stream()
-                    .map(JsonNodeExtractor::toProductToolResponse)
-                    .collect(Collectors.toList());
+            List<ProductToolResponse> products = new ArrayList<>(extractors.size());
+            int lookups = 0;
+            for (JsonNodeExtractor extractor : extractors) {
+                ProductToolResponse product = extractor.toProductToolResponse();
+                // Some endpoints attach the groups already; the name search does not.
+                // Check only where they are missing, and only for a bounded number of
+                // products, so "does this need a choice?" is answered up front without
+                // turning a menu listing into one HTTP call per line.
+                if (product.customizations() == null
+                        && product.productId() != null
+                        && lookups < MAX_CUSTOMIZATION_LOOKUPS) {
+                    lookups++;
+                    List<CustomizationGroupToolResponse> groups =
+                            getCustomizationGroups(product.productId());
+                    if (groups != null) {
+                        product = product.withCustomizations(groups);
+                    }
+                }
+                products.add(product);
+            }
 
             return toJson(ProductSearchToolResponse.success(products));
         } catch (Exception e) {

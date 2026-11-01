@@ -50,7 +50,7 @@ public class CustomerCartController {
     public CartResponse addItem(
             @Parameter(description = "Customer session id") @PathVariable long sessionId,
             @Valid @RequestBody AddCartItemRequest req) {
-        return cartService.addToCart(sessionId, req.productId(), req.skuId(), req.quantity());
+        return cartService.addToCart(sessionId, req.productId(), req.skuId(), req.quantity(), req.customizations());
     }
 
     /**

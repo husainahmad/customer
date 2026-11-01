@@ -16,6 +16,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -80,16 +83,43 @@ public class OrderTools {
                     skuId = resolveSkuId(i.productId());
                     if (skuId == null) skuId = i.productId();
                 }
+                List<Map<String, Object>> customizationGroups = new ArrayList<>();
+                if (i.customizations() != null) {
+                    for (var g : i.customizations()) {
+                        if (g == null || g.customizationId() == null || g.options() == null || g.options().isEmpty()) {
+                            continue;
+                        }
+                        List<Map<String, Object>> options = new ArrayList<>();
+                        for (var o : g.options()) {
+                            if (o == null || o.customizationOptionId() == null) {
+                                continue;
+                            }
+                            options.add(Map.of(
+                                    "customizationOptionId", o.customizationOptionId(),
+                                    "quantity", o.quantity() == null ? 1 : o.quantity()
+                            ));
+                        }
+                        if (!options.isEmpty()) {
+                            customizationGroups.add(Map.of(
+                                    "customizationId", g.customizationId(),
+                                    "options", options
+                            ));
+                        }
+                    }
+                }
+                Map<String, Object> skuMap = new LinkedHashMap<>();
+                skuMap.put("skuId", skuId);
+                skuMap.put("skuName", i.name());
+                skuMap.put("quantity", i.quantity());
+                if (!customizationGroups.isEmpty()) {
+                    skuMap.put("customizations", customizationGroups);
+                }
                 return Map.of(
                         "productId", i.productId(),
-                        "orderDetailSkus", java.util.List.of(Map.of(
-                                "skuId", skuId,
-                                "skuName", i.name(),
-                                "quantity", i.quantity()
-                        ))
+                        "orderDetailSkus", List.of(skuMap)
                 );
             }).toList();
-            Map<String, Object> orderDto = new java.util.LinkedHashMap<>();
+            Map<String, Object> orderDto = new LinkedHashMap<>();
             orderDto.put("storeId", orderProps.getStoreId());
             orderDto.put("customerId", session.getCustomerId());
             orderDto.put("customerName", customerName);

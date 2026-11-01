@@ -400,6 +400,104 @@ class MenuToolsTest {
     }
 
     // ---------------------------------------------------------------
+    // Product customizations
+    // ---------------------------------------------------------------
+
+    @Test
+    void productSearch_attachesCustomizationsWhenMenuReturnsThem() {
+        String productPayload = """
+                {
+                  "data": [
+                    { "id": 15, "name": "Kopi Tubruk",
+                      "skus": [ { "id": 27, "tierPrice": { "price": 7000 } } ] }
+                  ]
+                }
+                """;
+        String customizationPayload = """
+                {
+                  "data": [
+                    {
+                      "customizationId": 1,
+                      "name": "Size",
+                      "selectionType": "SINGLE",
+                      "required": true,
+                      "allowQuantity": false,
+                      "minSelection": 1,
+                      "maxSelection": 1,
+                      "options": [
+                        { "id": 101, "name": "Large", "tierPrices": [ { "price": 1500 } ] }
+                      ]
+                    }
+                  ]
+                }
+                """;
+        stubProductSearchSequence(productPayload, customizationPayload);
+
+        String result = menuTools.searchProductsByName("Kopi Tubruk");
+
+        JsonNode p = parse(result).get("products").get(0);
+        assertThat(p.get("has_customizations").asBoolean()).isTrue();
+        assertThat(p.get("customizations")).hasSize(1);
+        JsonNode group = p.get("customizations").get(0);
+        assertThat(group.get("customization_id").asLong()).isEqualTo(1L);
+        assertThat(group.get("selection_type").asText()).isEqualTo("SINGLE");
+        assertThat(group.get("required").asBoolean()).isTrue();
+        assertThat(group.get("options").get(0).get("option_id").asLong()).isEqualTo(101L);
+        assertThat(group.get("options").get(0).get("price").decimalValue()).isEqualByComparingTo("1500");
+    }
+
+    @Test
+    void getProductCustomizations_returnsGroupsAndOptions() {
+        String payload = """
+                {
+                  "data": [
+                    {
+                      "customizationId": 1,
+                      "name": "Size",
+                      "selectionType": "SINGLE",
+                      "required": true,
+                      "allowQuantity": false,
+                      "minSelection": 1,
+                      "maxSelection": 1,
+                      "options": [
+                        { "id": 101, "name": "Large", "tierPrices": [ { "price": 1500 } ] }
+                      ]
+                    }
+                  ]
+                }
+                """;
+        stubProductSearch(payload);
+
+        String result = menuTools.getProductCustomizations(15L);
+
+        JsonNode root = parse(result);
+        assertThat(root.get("product_id").asLong()).isEqualTo(15L);
+        assertThat(root.get("has_customizations").asBoolean()).isTrue();
+        assertThat(root.get("customizations")).hasSize(1);
+        assertThat(root.get("customizations").get(0).get("customization_id").asLong()).isEqualTo(1L);
+    }
+
+    @Test
+    void getProductCustomizations_withoutGroups_returnsHasFalse() {
+        stubProductSearch("""
+                { "data": [] }
+                """);
+
+        String result = menuTools.getProductCustomizations(15L);
+
+        JsonNode root = parse(result);
+        assertThat(root.get("has_customizations").asBoolean()).isFalse();
+        assertThat(root.get("customizations")).isEmpty();
+    }
+
+    @Test
+    void getProductCustomizations_nullProductId_returnsError() {
+        String result = menuTools.getProductCustomizations(null);
+
+        assertThat(result).contains("MENU_SERVICE_ERROR");
+    }
+
+    // ---------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------
 
