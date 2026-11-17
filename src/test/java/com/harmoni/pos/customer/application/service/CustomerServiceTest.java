@@ -34,7 +34,7 @@ class CustomerServiceTest {
     private CustomerService customerService;
 
     private static Customer customer(long id, String name, String phone) {
-        return new Customer(id, name, phone, null, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:00:00Z"));
+        return new Customer(id, null, name, phone, null, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:00:00Z"));
     }
 
     @Test
@@ -42,7 +42,7 @@ class CustomerServiceTest {
         when(customerRepository.findByPhone("08123456789")).thenReturn(Optional.empty());
         when(customerRepository.save(any())).thenReturn(customer(1L, "Ahmad", "08123456789"));
 
-        Customer result = customerService.create(new CreateCustomerCommand("Ahmad", "08123456789", "ahmad@example.com"));
+        Customer result = customerService.create(new CreateCustomerCommand("Ahmad", "08123456789", "ahmad@example.com", null));
 
         assertThat(result.getId()).isEqualTo(1L);
         assertThat(result.getName()).isEqualTo("Ahmad");
@@ -54,7 +54,7 @@ class CustomerServiceTest {
                 .thenReturn(Optional.of(customer(9L, "Other", "08123456789")));
 
         assertThatThrownBy(() -> customerService.create(
-                new CreateCustomerCommand("Ahmad", "08123456789", null)))
+                new CreateCustomerCommand("Ahmad", "08123456789", null, null)))
                 .isInstanceOf(DuplicateCustomerException.class);
     }
 
@@ -62,7 +62,7 @@ class CustomerServiceTest {
     void createCustomer_withoutPhone_skipsDuplicateCheck() {
         when(customerRepository.save(any())).thenReturn(customer(1L, "Anonymous", null));
 
-        Customer result = customerService.create(new CreateCustomerCommand("Anonymous", null, null));
+        Customer result = customerService.create(new CreateCustomerCommand("Anonymous", null, null, null));
 
         assertThat(result.getPhone()).isNull();
         verify(customerRepository).save(any());
@@ -153,12 +153,12 @@ class CustomerServiceTest {
 
     @Test
     void search_passesOffsetAndLimitToRepository() {
-        when(customerRepository.search("ahm", 20, 10)).thenReturn(List.of());
-        when(customerRepository.count("ahm")).thenReturn(35L);
+        when(customerRepository.search("ahm", null, 20, 10)).thenReturn(List.of());
+        when(customerRepository.count("ahm", null)).thenReturn(35L);
 
-        var result = customerService.search(new SearchCustomersQuery("ahm", 2, 10));
+        var result = customerService.search(new SearchCustomersQuery("ahm", null, 2, 10));
 
-        verify(customerRepository).search("ahm", 20, 10);
+        verify(customerRepository).search("ahm", null, 20, 10);
         assertThat(result.totalElements()).isEqualTo(35L);
         assertThat(result.totalPages()).isEqualTo(4);
         assertThat(result.page()).isEqualTo(2);
@@ -166,10 +166,10 @@ class CustomerServiceTest {
 
     @Test
     void search_blankKeyword_searchesAll() {
-        when(customerRepository.search(null, 0, 100)).thenReturn(List.of());
-        when(customerRepository.count(null)).thenReturn(0L);
+        when(customerRepository.search(null, null, 0, 100)).thenReturn(List.of());
+        when(customerRepository.count(null, null)).thenReturn(0L);
 
-        var result = customerService.search(new SearchCustomersQuery("  ", -5, 999));
+        var result = customerService.search(new SearchCustomersQuery("  ", null, -5, 999));
 
         assertThat(result.page()).isEqualTo(0);
         assertThat(result.size()).isEqualTo(100);

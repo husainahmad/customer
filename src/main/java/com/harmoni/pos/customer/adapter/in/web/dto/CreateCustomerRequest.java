@@ -19,6 +19,8 @@ public record CreateCustomerRequest(
 
         @Size(max = 150)
         @Email
-        String email
+        String email,
+
+        Integer brandId
 ) {
 }

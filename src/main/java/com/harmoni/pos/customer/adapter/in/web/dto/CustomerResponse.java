@@ -9,6 +9,7 @@ import java.time.Instant;
  */
 public record CustomerResponse(
         Long id,
+        Integer brandId,
         String name,
         String phone,
         String email,
@@ -19,6 +20,7 @@ public record CustomerResponse(
     public static CustomerResponse from(Customer customer) {
         return new CustomerResponse(
                 customer.getId(),
+                customer.getBrandId(),
                 customer.getName(),
                 customer.getPhone(),
                 customer.getEmail(),

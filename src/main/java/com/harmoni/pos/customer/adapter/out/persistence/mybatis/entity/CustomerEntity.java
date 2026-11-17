@@ -17,6 +17,7 @@ import java.time.Instant;
 public class CustomerEntity {
 
     private Long id;
+    private Integer brandId;
     private String name;
     private String phone;
     private String email;

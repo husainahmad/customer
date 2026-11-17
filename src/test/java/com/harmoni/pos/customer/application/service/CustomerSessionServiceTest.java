@@ -66,7 +66,7 @@ class CustomerSessionServiceTest {
 
     @Test
     void createIdentifiedSession_success() {
-        when(customerRepository.findById(1L)).thenReturn(Optional.of(Customer.create("Ahmad", null, null)));
+        when(customerRepository.findById(1L)).thenReturn(Optional.of(Customer.create("Ahmad", null, null, null)));
         when(sessionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         CustomerSession result = sessionService.create(

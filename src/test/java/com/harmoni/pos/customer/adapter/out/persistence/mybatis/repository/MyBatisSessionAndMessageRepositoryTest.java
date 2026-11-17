@@ -68,7 +68,7 @@ class MyBatisSessionAndMessageRepositoryTest {
 
     @Test
     void saveAnonymousSession_persistsAndReloadsEnums() {
-        Customer saved = customerRepository.save(Customer.create("Ahmad", "08160000001", null));
+        Customer saved = customerRepository.save(Customer.create("Ahmad", "08160000001", null, null));
 
         CustomerSession open = sessionRepository.save(newOpenSession(saved.getId(), "token-anon-001"));
 

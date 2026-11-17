@@ -51,7 +51,7 @@ public class CustomerController {
     @PostMapping
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CreateCustomerRequest request) {
         Customer customer = createCustomerUseCase.create(
-                new CreateCustomerCommand(request.name(), request.phone(), request.email()));
+                new CreateCustomerCommand(request.name(), request.phone(), request.email(), request.brandId()));
         return ResponseEntity
                 .created(URI.create("/api/v1/customers/" + customer.getId()))
                 .body(CustomerResponse.from(customer));
@@ -67,9 +67,10 @@ public class CustomerController {
     @GetMapping
     public PageResponse<CustomerResponse> search(
             @Parameter(description = "Free-text search") @RequestParam(required = false) String search,
+            @Parameter(description = "Brand id filter") @RequestParam(required = false) Integer brandId,
             @Parameter(description = "Zero-based page") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size) {
-        PageResult<Customer> result = searchCustomerUseCase.search(new SearchCustomersQuery(search, page, size));
+        PageResult<Customer> result = searchCustomerUseCase.search(new SearchCustomersQuery(search, brandId, page, size));
         return PageResponse.of(result, CustomerResponse::from);
     }
 

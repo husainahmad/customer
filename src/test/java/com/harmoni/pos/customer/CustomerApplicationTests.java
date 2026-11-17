@@ -43,7 +43,7 @@ class CustomerApplicationTests {
     @Test
     void contextLoads_andEndToEndRoundTripWorks() {
         Customer customer = createCustomerUseCase.create(
-                new CreateCustomerCommand("Ahmad", "08170000001", "ahmad@example.com"));
+                new CreateCustomerCommand("Ahmad", "08170000001", "ahmad@example.com", null));
         assertThat(customer.getId()).isNotNull();
 
         assertThat(getCustomerUseCase.getCustomer(customer.getId()).getName()).isEqualTo("Ahmad");

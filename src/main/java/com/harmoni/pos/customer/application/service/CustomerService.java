@@ -44,7 +44,7 @@ public class CustomerService implements
     @Transactional
     public Customer create(CreateCustomerCommand command) {
         assertPhoneAvailable(command.phone(), null);
-        return customerRepository.save(Customer.create(command.name(), command.phone(), command.email()));
+        return customerRepository.save(Customer.create(command.name(), command.phone(), command.email(), command.brandId()));
     }
 
     @Override
@@ -60,8 +60,8 @@ public class CustomerService implements
         int page = Math.max(query.page(), 0);
         String keyword = normalize(query.search());
 
-        List<Customer> content = customerRepository.search(keyword, page * size, size);
-        long totalElements = customerRepository.count(keyword);
+        List<Customer> content = customerRepository.search(keyword, query.brandId(), page * size, size);
+        long totalElements = customerRepository.count(keyword, query.brandId());
         return new PageResult<>(content, totalElements, page, size);
     }
 

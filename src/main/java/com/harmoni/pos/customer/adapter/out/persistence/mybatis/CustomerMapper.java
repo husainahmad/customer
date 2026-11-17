@@ -18,10 +18,11 @@ public interface CustomerMapper {
     Optional<CustomerEntity> findByPhoneIncludingDeleted(@Param("phone") String phone);
 
     List<CustomerEntity> search(@Param("search") String search,
+                                @Param("brandId") Integer brandId,
                                 @Param("offset") int offset,
                                 @Param("limit") int limit);
 
-    long count(@Param("search") String search);
+    long count(@Param("search") String search, @Param("brandId") Integer brandId);
 
     int insert(CustomerEntity entity);
 

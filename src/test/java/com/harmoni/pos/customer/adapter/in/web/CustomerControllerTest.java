@@ -57,7 +57,7 @@ class CustomerControllerTest {
     private DeleteCustomerUseCase deleteCustomerUseCase;
 
     private static Customer sample() {
-        return new Customer(1L, "Ahmad", "08123456789", "ahmad@example.com",
+        return new Customer(1L, null, "Ahmad", "08123456789", "ahmad@example.com",
                 Instant.parse("2026-08-23T06:00:00Z"), Instant.parse("2026-08-23T06:00:00Z"));
     }
 
@@ -131,7 +131,7 @@ class CustomerControllerTest {
     @Test
     void updateCustomer_returns200() throws Exception {
         when(updateCustomerUseCase.update(eq(1L), any(UpdateCustomerCommand.class)))
-                .thenReturn(new Customer(1L, "Ahmad Husain", "08123456789", null,
+                .thenReturn(new Customer(1L, null, "Ahmad Husain", "08123456789", null,
                         Instant.parse("2026-08-23T06:00:00Z"), Instant.parse("2026-08-23T07:00:00Z")));
 
         mockMvc.perform(put("/api/v1/customers/1")

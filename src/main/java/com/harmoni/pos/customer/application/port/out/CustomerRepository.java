@@ -20,9 +20,9 @@ public interface CustomerRepository {
      */
     Optional<Customer> findByPhone(String phone);
 
-    List<Customer> search(String search, int offset, int limit);
+    List<Customer> search(String search, Integer brandId, int offset, int limit);
 
-    long count(String search);
+    long count(String search, Integer brandId);
 
     Customer update(Customer customer);
 

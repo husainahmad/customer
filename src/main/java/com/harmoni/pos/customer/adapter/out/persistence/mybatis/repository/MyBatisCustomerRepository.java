@@ -37,15 +37,15 @@ public class MyBatisCustomerRepository implements CustomerRepository {
     }
 
     @Override
-    public List<Customer> search(String search, int offset, int limit) {
-        return customerMapper.search(search, offset, limit).stream()
+    public List<Customer> search(String search, Integer brandId, int offset, int limit) {
+        return customerMapper.search(search, brandId, offset, limit).stream()
                 .map(MyBatisCustomerRepository::toDomain)
                 .toList();
     }
 
     @Override
-    public long count(String search) {
-        return customerMapper.count(search);
+    public long count(String search, Integer brandId) {
+        return customerMapper.count(search, brandId);
     }
 
     @Override
@@ -68,6 +68,7 @@ public class MyBatisCustomerRepository implements CustomerRepository {
     private static CustomerEntity toEntity(Customer customer) {
         return CustomerEntity.builder()
                 .id(customer.getId())
+                .brandId(customer.getBrandId())
                 .name(customer.getName())
                 .phone(customer.getPhone())
                 .email(customer.getEmail())
@@ -77,6 +78,7 @@ public class MyBatisCustomerRepository implements CustomerRepository {
     private static Customer toDomain(CustomerEntity entity) {
         return new Customer(
                 entity.getId(),
+                entity.getBrandId(),
                 entity.getName(),
                 entity.getPhone(),
                 entity.getEmail(),

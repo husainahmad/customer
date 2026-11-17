@@ -48,7 +48,7 @@ class MyBatisCustomerRepositoryTest {
     }
 
     private static Customer customer(String name, String phone, String email) {
-        return Customer.create(name, phone, email);
+        return Customer.create(name, phone, email, null);
     }
 
     @Test
@@ -100,11 +100,11 @@ class MyBatisCustomerRepositoryTest {
         customerRepository.save(customer("Sinta", "083333333333", "sinta@example.com"));
         Customer d = customerRepository.save(customer("Dedi Empat", "08444444zzmatch", null));
 
-        long total = customerRepository.count("zzmatch");
+        long total = customerRepository.count("zzmatch", null);
         assertThat(total).isEqualTo(3);
 
-        List<Customer> page0 = customerRepository.search("zzmatch", 0, 2);
-        List<Customer> page1 = customerRepository.search("zzmatch", 2, 2);
+        List<Customer> page0 = customerRepository.search("zzmatch", null, 0, 2);
+        List<Customer> page1 = customerRepository.search("zzmatch", null, 2, 2);
 
         assertThat(page0).extracting(Customer::getId)
                 .containsExactly(d.getId(), b.getId());
@@ -114,7 +114,7 @@ class MyBatisCustomerRepositoryTest {
 
     @Test
     void search_nullKeyword_returnsEverything() {
-        long total = customerRepository.count(null);
+        long total = customerRepository.count(null, null);
         assertThat(total).isGreaterThanOrEqualTo(0);
     }
 
